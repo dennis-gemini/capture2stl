@@ -524,10 +524,10 @@ def build_stl(original, cropped, label, **options):
         input_dialog_img = _grid_images(img_list)
 
         msg = [
-            "[ESC] to cancel",
-            "[Space] to toggle grayscaled/binary mode",
-            #"[Left/Right] to -/+ binary threshold",
-            "[Down] to toggle image inversion", 
+            "<ESC> to cancel",
+            "<Space> to toggle grayscaled/binary mode",
+            #"[" or "]" to -/+ binary threshold",
+            "<Tab> to toggle image inversion", 
             "-------------------------------------",
             "Mode: %s" % ("Grayscaled" if binary_threshold is None else "Binary"),
             #"Threshold: %s" % ("N/A" if binary_threshold is None else str(binary_threshold)),
@@ -554,12 +554,12 @@ def build_stl(original, cropped, label, **options):
                 binary_threshold = def_binary_threshold
             else:
                 binary_threshold = None
-        elif keystroke == 1: # down
+        elif keystroke == 9: # tab
             inverse = not inverse
-        elif keystroke == 2: # left
+        elif keystroke == 91: # [
             if binary_threshold is not None and binary_threshold > 0:
                 binary_threshold -= 1
-        elif keystroke == 3: # right
+        elif keystroke == 93: # ]
             if binary_threshold is not None and binary_threshold < 255:
                 binary_threshold += 1
     input_dialog_img = None
