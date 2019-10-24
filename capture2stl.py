@@ -599,6 +599,9 @@ def build_stl(original, cropped, label, **options):
         keystroke = cv2.waitKey(200)
         if keystroke <= 0:
             continue
+
+        keystroke &= 0xff
+
         if keystroke == 27:
             return None, None, None, None
         if keystroke in (10, 13) and label:
