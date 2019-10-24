@@ -41,9 +41,28 @@ def _cv2_compat(name, oldname):
         pass
 
 
-_cv2_compat("CAP_PROP_FRAME_WIDTH" , "CV_CAP_PROP_FRAME_WIDTH" )
-_cv2_compat("CAP_PROP_FRAME_HEIGHT", "CV_CAP_PROP_FRAME_HEIGHT")
-_cv2_compat("CAP_PROP_FPS"         , "CV_CAP_PROP_FPS"         )
+_cv2_compat("CAP_PROP_FRAME_WIDTH"          , "CV_CAP_PROP_FRAME_WIDTH" )
+_cv2_compat("CAP_PROP_FRAME_HEIGHT"         , "CV_CAP_PROP_FRAME_HEIGHT")
+_cv2_compat("CAP_PROP_FPS"                  , "CV_CAP_PROP_FPS"         )
+_cv2_compat("LINE_AA"                       , "CV_AA"                   )
+_cv2_compat("createBackgroundSubtractorMOG2", "BackgroundSubtractorMOG2")
+_cv2_compat("createBackgroundSubtractorMOG2", "BackgroundSubtractorMOG" )
+_cv2_compat("boxPoints"                     , "BoxPoints"               )
+
+
+def _cv2_findContours(image, mode, method, *args, **kwargs):
+    result = cv2.findContours(image, mode, method, *args, **kwargs)
+    if len(result) >= 3:
+        return result
+    return None, result[0], result[1]
+
+
+def _cv2_boundingRect(c):
+    try:
+        return cv2.boundingRect(c)
+    except:
+        p1, p2, p3, p4 = c
+        return min(p1[0], p2[0], p3[0], p4[0]), min(p1[1], p2[1], p3[1], p4[1]), max(p1[0], p2[0], p3[0], p4[0]), max(p1[1], p2[1], p3[1], p4[1])
 
 
 def _get_option(options, key, default):
@@ -74,9 +93,9 @@ def _exclude_background(img):
     mask = cv2.dilate(mask, kernel, iterations = 1)
 
     left, top, right, bottom = sys.maxint, sys.maxint, 0, 0
-    _, contours, _ = cv2.findContours(mask, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
+    _, contours, _ = _cv2_findContours(mask, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
     for c in sorted(contours, key = cv2.contourArea, reverse = True)[:10]:
-        x, y, w, h = cv2.boundingRect(c)
+        x, y, w, h = _cv2_boundingRect(c)
         left, top, right, bottom = min(left, x), min(top, y), max(right, x + w), max(bottom, y + h)
 
     mask = np.zeros_like(img)
@@ -112,7 +131,7 @@ def _detect_edges(img, kernel_size = 5, low_threshold = 50, high_threshold = 150
 
 
 def _find_contours(img, edges, draw_color = (0, 0, 255), draw_width = 5):
-    _, contours, hierarchy = cv2.findContours(edges, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+    _, contours, _ = _cv2_findContours(edges, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
 
     matched = None
     candidates = []
@@ -130,7 +149,7 @@ def _find_contours(img, edges, draw_color = (0, 0, 255), draw_width = 5):
 
     if candidates:
         approx1, box1 = candidates.pop(0)
-        x1, y1, w1, h1 = cv2.boundingRect(box1)
+        x1, y1, w1, h1 = _cv2_boundingRect(box1)
 
         #cv2.drawContours(img, [approx1], 0, (255, 0, 0), draw_width)
 
@@ -139,7 +158,7 @@ def _find_contours(img, edges, draw_color = (0, 0, 255), draw_width = 5):
             for approx2, box2 in candidates:
                 #cv2.drawContours(img, [approx2], 0, (255, 0, 0), draw_width)
 
-                x2, y2, w2, h2 = cv2.boundingRect(box2)
+                x2, y2, w2, h2 = _cv2_boundingRect(box2)
                 if (x2 > right) or (x2 + w2 < left) or (y2 > bottom) or (y2 + h2 < top):
                     continue
                 if (x2 >= left) and (x2 + w2 <= right) and (y2 >= top) and (y2 + h2 <= bottom):
@@ -157,8 +176,8 @@ def _find_contours(img, edges, draw_color = (0, 0, 255), draw_width = 5):
         approx, box = matched
         if draw_color:
             cv2.drawContours(img, [approx], 0, draw_color, draw_width)
-            x1, y1, w1, h1 = cv2.boundingRect(box)
-            x2, y2, w2, h2 = cv2.boundingRect(approx)
+            x1, y1, w1, h1 = _cv2_boundingRect(box)
+            x2, y2, w2, h2 = _cv2_boundingRect(approx)
             x = min((x1 + x1)/2, min([a[0][0] for a in approx]))
             y = min((y1 + y2)/2, min([a[0][1] for a in approx]))
             cv2.putText(img, "Detected", (x, y), cv2.FONT_HERSHEY_SIMPLEX, 1.0, draw_color, draw_width / 2, cv2.LINE_AA)
@@ -177,7 +196,7 @@ def _imclearborder(img, detected, binary_threshold, radius = 5):
     #src = cv2.Canny(src, 50, 150)
     #src = cv2.morphologyEx(src, cv2.MORPH_CLOSE, kernel, iterations = 2)
 
-    _, contours, _ = cv2.findContours(src, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
+    _, contours, _ = _cv2_findContours(src, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
     rows, cols = src.shape[:2]
 
     contour_list = []
