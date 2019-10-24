@@ -464,7 +464,7 @@ def _image2mesh(img, base_height = 2, dx = 0.3, dy = 0.3, dz = 6):
 #    return cv2.imread("%s-thumb.png" % label)
 
 
-def _process_image(cropped, inverse, binary_threshold, smoothed, kernel_size):
+def _process_image(cropped, inverse, binary_threshold, smoothed, kernel_size, auto_scale, scale_max_width, scale_max_height, scale_target):
     detected = cropped.copy()
     img = cv2.cvtColor(cropped, cv2.COLOR_RGB2GRAY)
 
@@ -486,7 +486,15 @@ def _process_image(cropped, inverse, binary_threshold, smoothed, kernel_size):
     if smoothed:
         img = cv2.GaussianBlur(img, (kernel_size, kernel_size), 2)
 
-    return img, detected
+    if scale_target == 0 and auto_scale:
+        h, w = img.shape[:2]
+        aspect = min(float(scale_max_width) / w, float(scale_max_height) / h)
+        effective = cv2.resize(img, (int(w * aspect), int(h * aspect)), interpolation=cv2.INTER_AREA if aspect < 1.0 else cv2.INTER_CUBIC)
+    else:
+        effective = img
+        img = None
+
+    return effective, img, detected
 
 
 def build_stl(original, cropped, label, **options):
@@ -496,6 +504,10 @@ def build_stl(original, cropped, label, **options):
     binary_threshold     = def_binary_threshold if binary else None
     kernel_size          = _get_option(options, "kernel_size", 5)
     smoothed             = _get_option(options, "smoothed", True)
+    auto_scale           = _get_option(options, "auto_scale", True)
+    scale_max_width      = _get_option(options, "scale_max_width", 32)
+    scale_max_height     = _get_option(options, "scale_max_height", 18)
+    scale_target         = _get_option(options, "scale_target", 0)
     base_height          = _get_option(options, "base_height", 2)
     dx                   = _get_option(options, "dx", 0.3)
     dy                   = _get_option(options, "dy", 0.3)
@@ -506,20 +518,25 @@ def build_stl(original, cropped, label, **options):
         label = ""
 
     exchange_counter = 0
-    show_effective = False
+    rotate_image = 0
     while True:
-        effective, detected = _process_image(cropped, inverse, binary_threshold, smoothed, kernel_size)
+        effective, unscaled, detected = _process_image(cropped, inverse, binary_threshold, smoothed, kernel_size, auto_scale, scale_max_width / dx, scale_max_height / dy, scale_target)
         exchange_counter = (exchange_counter + 1) % 2
         if exchange_counter == 0:
-            show_effective = not show_effective
+            if unscaled is not None:
+                rotate_image = (rotate_image + 1) % 3
+            else:
+                rotate_image = (rotate_image + 1) % 2
 
         img_list = [
             ("%s-original.png" % label if label else "Original", original),
         ]
-        if show_effective:
+        if rotate_image == 0:
             img_list.append(("%s-effective.png" % label if label else "Filtered", effective))
-        else:
+        elif rotate_image == 1:
             img_list.append(("%s-cropped.png" % label if label else "Detected", detected))
+        else:
+            img_list.append(("%s-unscaled.png" % label if label else "Unscaled", unscaled))
 
         input_dialog_img = _grid_images(img_list)
 
@@ -540,7 +557,7 @@ def build_stl(original, cropped, label, **options):
         if keystroke <= 0:
             continue
         if keystroke == 27:
-            return None, None, None
+            return None, None, None, None
         if keystroke in (10, 13) and label:
             break
 
@@ -568,13 +585,19 @@ def build_stl(original, cropped, label, **options):
     cv2.imshow('result', _grid_images(img_list))
     cv2.waitKey(100)
 
+    if scale_target == 1 and auto_scale:
+        h, w = effective.shape[:2]
+        aspect = min(float(scale_max_width) / dx / w, float(scale_max_height) / dy / h)
+        dx *= aspect
+        dy *= aspect
+
     m = _image2mesh(effective, base_height = base_height, dx = dx, dy = dy, dz = dz)
 
     #cv2.destroyAllWindows()
-    return m, label, effective
+    return m, label, effective, unscaled
 
 
-def save_result(original, cropped, effective, label, m):
+def save_result(original, cropped, effective, unscaled, label, m):
     if not label:
         label = "result"
 
@@ -600,6 +623,10 @@ def save_result(original, cropped, effective, label, m):
         cv2.imwrite(os.path.join("result", "%s-original.png" % prefix), original)
         cv2.imwrite(os.path.join("result", "%s-cropped.png" % prefix), cropped)
         cv2.imwrite(os.path.join("result", "%s-effective.png" % prefix), effective)
+
+        if unscaled is not None:
+            cv2.imwrite(os.path.join("result", "%s-unscaled.png" % prefix), unscaled)
+
         m.save(os.path.join("result", "%s.stl" % prefix))
         img_list[2] = ("", _get_message_pane("Saved successfully\nPress any key to return", original.shape[1], original.shape[0], font_size = 3, stroke_width = 3))
     except BaseException:
@@ -619,14 +646,18 @@ if __name__ == "__main__":
     }
     stl_options = {
         "inverse": True,                # inverse the output: blacker is higher; whiter is lower
-        "binary": False,                # whether to convert the grayscaled image into the binary image
+        "binary": True,                 # whether to convert the grayscaled image into the binary image
         "def_binary_threshold": 127,    # convert the grayscaled image with the binary threshold; 127 can be a possible value
         "kernel_size": 5,               # used by gaussian blur
         "smoothed": True,               # gaussian-blurred edges
-        "base_height": 2,               # the base height in milimeter of the lithophane
+        "auto_scale": True,             # enable auto-scale
+        "scale_max_width": 50.0,        # max width in milimeter of the output
+        "scale_max_height": 17.0,       # max height in milimeter of the output
+        "scale_target": 0,              # 0: scale the image for low poly, 1: scale the stl for high quality
+        "base_height": 0.4,             # the base height in milimeter of the lithophane
         "dx": 0.3,                      # delta x in milimeter for each pixel
         "dy": 0.3,                      # delta y in milimeter for each pixel
-        "dz": 6,                        # max height in milimeter for each pixel as per value 255
+        "dz": 0.8,                      # max height in milimeter for each pixel as per value 255
     }
 
     while True:
@@ -635,9 +666,9 @@ if __name__ == "__main__":
             break
 
         original, cropped, label = result
-        m, label, effective = build_stl(original, cropped, label, **stl_options)
+        m, label, effective, unscaled = build_stl(original, cropped, label, **stl_options)
         if m is not None:
-            save_result(original, cropped, effective, label, m)
+            save_result(original, cropped, effective, unscaled, label, m)
 
     cv2.destroyAllWindows()
 
