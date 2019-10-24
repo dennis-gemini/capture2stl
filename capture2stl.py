@@ -22,6 +22,30 @@ import numpy as np
 import math
 from stl import mesh
 
+def _cv2_compat(name, oldname):
+    if name in cv2.__dict__:
+        return
+
+    try:
+        exec("cv2." + name + "=cv2." + oldname)
+        return
+    except:
+        pass
+
+    if "cv" not in cv2.__dict__:
+        return
+
+    try:
+        exec("cv2." + name + "=cv2.cv." + oldname)
+    except:
+        pass
+
+
+_cv2_compat("CAP_PROP_FRAME_WIDTH" , "CV_CAP_PROP_FRAME_WIDTH" )
+_cv2_compat("CAP_PROP_FRAME_HEIGHT", "CV_CAP_PROP_FRAME_HEIGHT")
+_cv2_compat("CAP_PROP_FPS"         , "CV_CAP_PROP_FPS"         )
+
+
 def _get_option(options, key, default):
     if key in options:
         return options[key]
